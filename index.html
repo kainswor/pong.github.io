@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Retro Pixel Display Demo</title>
+  <title>Pong</title>
   <style>
     * {
       margin: 0;
@@ -16,46 +16,18 @@
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      background: #1a1a1a;
-      font-family: 'Courier New', monospace;
-      color: #39ff14;
-    }
-    
-    .container {
-      text-align: center;
-      padding: 20px;
-    }
-    
-    h1 {
-      margin-bottom: 20px;
-      font-size: 24px;
-      text-shadow: 0 0 10px #39ff14;
+      background: #000;
     }
     
     #display {
-      border: 2px solid #39ff14;
-      box-shadow: 0 0 20px rgba(57, 255, 20, 0.5);
-      background: #000;
       display: block;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
-    
-    .instructions {
-      margin-top: 20px;
-      font-size: 14px;
-      opacity: 0.8;
-    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Retro Pixel Display</h1>
-    <canvas id="display"></canvas>
-    <div class="instructions">
-      Use arrow keys to move the pixel
-    </div>
-  </div>
-  <script type="module" src="/src/demo.js"></script>
+  <canvas id="display"></canvas>
+  <script type="module" src="/src/pong.js"></script>
 </body>
 </html>

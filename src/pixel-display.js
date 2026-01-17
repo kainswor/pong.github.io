@@ -33,14 +33,15 @@ export class PixelDisplay {
     this.fadeInTime = 50;  // 0.05s
     this.fadeOutTime = 200; // 0.2s
     
-    // Pixel state: 2D array storing { state: boolean, timestamp: number }
+    // Pixel state: 2D array storing { state: boolean, onTimestamp: number, offTimestamp: number }
     this.pixels = [];
     for (let y = 0; y < emulatedHeight; y++) {
       this.pixels[y] = [];
       for (let x = 0; x < emulatedWidth; x++) {
         this.pixels[y][x] = {
           state: false,
-          timestamp: 0
+          onTimestamp: 0,
+          offTimestamp: 0
         };
       }
     }
@@ -58,9 +59,14 @@ export class PixelDisplay {
   setPixel(x, y, state) {
     if (x >= 0 && x < this.emulatedWidth && y >= 0 && y < this.emulatedHeight) {
       const pixel = this.pixels[y][x];
+      const now = performance.now();
       if (pixel.state !== state) {
         pixel.state = state;
-        pixel.timestamp = performance.now();
+        if (state) {
+          pixel.onTimestamp = now;
+        } else {
+          pixel.offTimestamp = now;
+        }
       }
     }
   }
@@ -86,36 +92,56 @@ export class PixelDisplay {
     for (let y = 0; y < this.emulatedHeight; y++) {
       for (let x = 0; x < this.emulatedWidth; x++) {
         this.pixels[y][x].state = false;
-        this.pixels[y][x].timestamp = now;
+        this.pixels[y][x].offTimestamp = now;
       }
     }
   }
   
   /**
    * Calculate the brightness/alpha for a pixel based on its state and fade timing
-   * @param {Object} pixel - Pixel object with state and timestamp
+   * @param {Object} pixel - Pixel object with state, onTimestamp, and offTimestamp
    * @param {number} currentTime - Current time in milliseconds
    * @returns {number} Brightness value between 0 and 1
    */
   calculateBrightness(pixel, currentTime) {
-    const elapsed = currentTime - pixel.timestamp;
+    let fadeInBrightness = 0;
+    let fadeOutBrightness = 0;
     
-    if (pixel.state) {
-      // Fade in when turning ON (linear interpolation)
-      if (elapsed < this.fadeInTime) {
-        return elapsed / this.fadeInTime;
+    // Calculate fade-in brightness (if pixel is ON or recently turned ON)
+    if (pixel.onTimestamp > 0) {
+      const onElapsed = currentTime - pixel.onTimestamp;
+      if (pixel.state) {
+        // Currently ON - calculate fade-in
+        if (onElapsed < this.fadeInTime) {
+          fadeInBrightness = onElapsed / this.fadeInTime;
+        } else {
+          fadeInBrightness = 1.0; // Fully on
+        }
       }
-      return 1.0; // Fully on
-    } else {
-      // Fade out when turning OFF - drops very fast with a faint tail
-      if (elapsed < this.fadeOutTime) {
-        // Power function: drops very fast initially but keeps a faint tail
-        // Using high power (6) for rapid initial drop with long faint tail
-        const t = elapsed / this.fadeOutTime;
-        return Math.pow(1 - t, 6);
-      }
-      return 0.0; // Fully off
     }
+    
+    // Calculate fade-out brightness (if pixel is OFF or recently turned OFF)
+    if (pixel.offTimestamp > 0) {
+      const offElapsed = currentTime - pixel.offTimestamp;
+      if (!pixel.state) {
+        // Currently OFF - calculate fade-out
+        if (offElapsed < this.fadeOutTime) {
+          const t = offElapsed / this.fadeOutTime;
+          fadeOutBrightness = Math.pow(1 - t, 6);
+        } else {
+          fadeOutBrightness = 0.0; // Fully off
+        }
+      } else {
+        // Currently ON but was recently OFF - still calculate fade-out
+        if (offElapsed < this.fadeOutTime) {
+          const t = offElapsed / this.fadeOutTime;
+          fadeOutBrightness = Math.pow(1 - t, 6);
+        }
+      }
+    }
+    
+    // Return the maximum of fade-in and fade-out (never exceed 1.0)
+    return Math.min(1.0, Math.max(fadeInBrightness, fadeOutBrightness));
   }
   
   /**
