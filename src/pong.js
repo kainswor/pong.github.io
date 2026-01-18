@@ -218,9 +218,8 @@ class Pong {
     this.countdownNumber = 3;
     this.countdownStartTime = 0;
     this.countdownScale = 1.0;
-    this.prevCountdownNumber = 3;
-    this.prevCountdownScale = 1.0;
     this.winner = null; // 'left' or 'right'
+    this.winning = false; // debug win shortcut (o key); also used by drawGameOverMessage
     this.gameOverStartTime = 0;
     this.restartArrowRotation = 0;
     this.restartArrowRotationSpeed = 0.1;
@@ -248,17 +247,11 @@ class Pong {
     this.startButtonFrameX = 0;
     this.startButtonFrameY = 0;
     
-    // Previous game over message position for cleanup
-    this.prevGameOverStartX = 0;
-    this.prevGameOverStartY = 0;
-    
     // Bouncing PONG title in menu
     this.pongTitleX = Math.floor(this.width / 2);
     this.pongTitleY = Math.floor(this.height / 2);
     this.pongTitleVx = (Math.random() > 0.5 ? 1 : -1) * 0.5;
     this.pongTitleVy = (Math.random() > 0.5 ? 1 : -1) * 0.5;
-    this.prevPongTitleX = this.pongTitleX;
-    this.prevPongTitleY = this.pongTitleY;
     
     // Initialize game objects
     this.leftPaddle = {
@@ -307,9 +300,6 @@ class Pong {
     // Calculate menu frame positions (evenly spaced on left half, mirrored on right)
     this.calculateMenuFramePositions();
     
-    // Draw court (always-on elements)
-    this.drawCourt();
-    
     // Setup mouse click handler
     this.setupClickHandler();
     
@@ -346,18 +336,6 @@ class Pong {
   }
   
   /**
-   * Draw the court (midcourt line and walls)
-   * These pixels stay ON permanently
-   */
-  drawCourt() {
-    const midX = Math.floor(this.width / 2);
-    this.display.drawLineVDashed(midX, 0, this.height - 1, 2);
-    this.display.drawLineH(0, 0, this.width - 1);
-    this.display.drawLineH(this.height - 1, 0, this.width - 1);
-    this.updateScores();
-  }
-  
-  /**
    * Maintain court layer - redraws court pixels every frame
    * Ensures court pixels are always ON regardless of other elements
    */
@@ -375,17 +353,13 @@ class Pong {
   drawNumber(x, y, digit, scale = 1.0) {
     const font = PIXEL_FONT[digit];
     if (!font) return;
-    this.display.drawPattern(font, x, y, Math.max(1, Math.floor(scale)));
+    this.display.drawPattern(font, x, y, Math.max(1, scale));
   }
   
   /**
    * Draw a score (0-5) at position
    */
   drawScore(x, y, score) {
-    const midX = Math.floor(this.width / 2);
-    this.display.clearRect(x, y, 5, 7, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-    });
     this.drawNumber(x, y, score);
   }
   
@@ -401,24 +375,6 @@ class Pong {
   }
   
   /**
-   * Clear countdown area completely
-   * After clearing, restore the dotted middle line pattern (ON for even y, OFF for odd y)
-   */
-  clearCountdownArea() {
-    const midX = Math.floor(this.width / 2);
-    const clearSize = 20;
-    const centerX = Math.floor(this.width / 2);
-    const centerY = Math.floor(this.height / 2);
-    this.display.clearRect(centerX - clearSize, centerY - clearSize, 2 * clearSize, 2 * clearSize, {
-      preserve: (px, py) => py === 0 || py === this.height - 1
-    });
-    for (let py = Math.max(0, centerY - clearSize); py < Math.min(this.height, centerY + clearSize); py++) {
-      if (py % 2 === 0) this.display.setPixel(midX, py, true);
-      else this.display.setPixel(midX, py, false);
-    }
-  }
-  
-  /**
    * Draw countdown with zoom bounce animation
    */
   drawCountdown() {
@@ -426,23 +382,13 @@ class Pong {
     const elapsed = currentTime - this.countdownStartTime;
     const countdownDuration = 750; // 750ms per number
     
-    // Always clear countdown area first to ensure clean rendering
-    // Clear previous countdown number's area (using previous scale for complete cleanup)
-    this.clearCountdownArea();
-    
     if (elapsed >= countdownDuration) {
-      // Clear completely before moving to next number
-      this.clearCountdownArea();
-      
       // Move to next number
       this.countdownNumber--;
       this.countdownStartTime = currentTime;
       
       if (this.countdownNumber < 1) {
-        // Countdown complete, ensure complete cleanup
-        this.clearCountdownArea();
-        this.prevCountdownNumber = 0;
-        this.prevCountdownScale = 0;
+        // Countdown complete
         this.gameState = 'PLAYING';
         
         // Only reset ball if we're not resuming from pause
@@ -467,15 +413,12 @@ class Pong {
       scale = 1.0 - (bounce * bounce * 0.2); // Slight overshoot then settle
     }
     
-    // Draw number centered
-    const centerX = Math.floor(this.width / 2) - Math.floor((5 * scale) / 2);
-    const centerY = Math.floor(this.height / 2) - Math.floor((7 * scale) / 2);
-    
+    // Draw number centered: use actual drawn size so it zooms in place at screen center
+    const w = Math.ceil(5 * scale);
+    const h = Math.ceil(7 * scale);
+    const centerX = Math.floor(this.width / 2) - Math.floor(w / 2);
+    const centerY = Math.floor(this.height / 2) - Math.floor(h / 2);
     this.drawNumber(centerX, centerY, this.countdownNumber, scale);
-    
-    // Store current state for next frame cleanup
-    this.prevCountdownNumber = this.countdownNumber;
-    this.prevCountdownScale = scale;
   }
   
   /**
@@ -514,28 +457,6 @@ class Pong {
   }
   
   /**
-   * Clear button frame area
-   */
-  clearButtonFrame(buttonX, buttonY, buttonSize) {
-    const midX = Math.floor(this.width / 2);
-    
-    // Clear frame area (1 pixel border + padding)
-    const padding = 1;
-    for (let x = buttonX - padding; x < buttonX + buttonSize + padding; x++) {
-      for (let y = buttonY - padding; y < buttonY + buttonSize + padding; y++) {
-        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-          // Only clear if it's on the border (not inside button)
-          const isBorder = (x < buttonX || x >= buttonX + buttonSize || 
-                           y < buttonY || y >= buttonY + buttonSize);
-          if (isBorder && x !== midX && y !== 0 && y !== this.height - 1) {
-            this.display.setPixel(x, y, false);
-          }
-        }
-      }
-    }
-  }
-  
-  /**
    * Cached blink state so all blinking=true frames on screen are in sync. Uses 2P rates: speed 0.0025, on when cycle < 0.7. Recomputes once per ~16ms.
    */
   _getBlinkOn() {
@@ -550,11 +471,10 @@ class Pong {
   }
 
   /**
-   * Draw frame (1px outline). Clears frame area first. Court preserve. Square: size×size at (x, y).
+   * Draw frame (1px outline). Court preserve. Square: size×size at (x, y).
    * @param {boolean} [blinking=false] - If false, always draw. If true, draw only when blink is on (2P timing); all blinking frames stay in sync.
    */
   drawFrame(x, y, size, blinking = false) {
-    this.clearButtonFrame(x, y, size);
     if (blinking && !this._getBlinkOn()) return;
     const midX = Math.floor(this.width / 2);
     this.display.drawRectOutline(x, y, size, size, {
@@ -569,37 +489,16 @@ class Pong {
     this.drawFrame(buttonX, buttonY, buttonSize, true);
   }
   
-  clearStartArrowArea() {
-    const midX = Math.floor(this.width / 2);
-    const buttonSize = 20;
-    const padding = 5;
-    const buttonX = this.startButtonFrameX;
-    const buttonY = this.startButtonFrameY;
-    this.display.clearRect(buttonX - padding, buttonY - padding, buttonSize + 2 * padding, buttonSize + 2 * padding, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-    });
-  }
-  
-  clearPlayer1FrameArea() {
-    const midX = Math.floor(this.width / 2);
-    const buttonSize = 20;
-    const padding = 5;
-    this.display.clearRect(this.player1FrameX - padding, this.player1FrameY - padding, buttonSize + 2 * padding, buttonSize + 2 * padding, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-    });
-  }
-  
   drawPlayer1Frame() {
     const buttonSize = 20;
-    this.clearPlayer1FrameArea();
     const buttonX = this.player1FrameX;
     const buttonY = this.player1FrameY;
     this.drawFrame(buttonX, buttonY, buttonSize, true);
-    const scale = 2;
+    const scale = 17 / 12; // 2px wider than 5/4: "1" 8px + gap 1 + "P" 10px = 19; top-left fixed
     const edgeGap = 1;
-    const textStartX = buttonX + edgeGap;
+    const textStartX = buttonX + edgeGap - 1; // 1px left
     const textStartY = buttonY + edgeGap + 2;
-    const digit1W = 5 * 2;
+    const digit1W = Math.ceil(5 * scale);
     this.display.drawPattern(PIXEL_FONT[1], textStartX, textStartY, scale);
     this.display.drawPattern(LARGE_LETTER_PATTERNS['P'], textStartX + digit1W + 1, textStartY, scale);
   }
@@ -615,9 +514,6 @@ class Pong {
     // Use calculated position from calculateMenuFramePositions
     const buttonX = this.startButtonFrameX;
     const buttonY = this.startButtonFrameY;
-    
-    // Clear button area before drawing
-    this.clearStartArrowArea();
     
     // Draw VCR Play icon (right triangle with vertical left edge pointing right)
     const triangleLeftX = buttonX + 5; // Left vertical edge
@@ -661,19 +557,6 @@ class Pong {
     };
   }
   
-  clearRestartArrowArea() {
-    const midX = Math.floor(this.width / 2);
-    const centerY = Math.floor(this.height / 2);
-    const buttonSize = 20;
-    const padding = 5;
-    const rightSideCenterX = midX + Math.floor((this.width - midX) / 2);
-    const buttonX = rightSideCenterX - Math.floor(buttonSize / 2);
-    const buttonY = centerY - Math.floor(buttonSize / 2);
-    this.display.clearRect(buttonX - padding, buttonY - padding, buttonSize + 2 * padding, buttonSize + 2 * padding, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-    });
-  }
-  
   /**
    * Draw curved arrow that twists clockwise for restart button (20x20)
    */
@@ -692,9 +575,6 @@ class Pong {
     if (this.restartArrowRotation >= Math.PI * 2) {
       this.restartArrowRotation -= Math.PI * 2;
     }
-    
-    // Clear previous arrow area before drawing
-    this.clearRestartArrowArea();
     
     // Draw curved arrow that twists clockwise (circular arrow pattern)
     const arrowCenterX = buttonX + Math.floor(buttonSize / 2);
@@ -769,21 +649,10 @@ class Pong {
     };
   }
   
-  clearPongTitleArea() {
-    const clearSize = 50;
-    const midX = Math.floor(this.width / 2);
-    this.display.clearRect(this.prevPongTitleX - clearSize, this.prevPongTitleY - clearSize, 2 * clearSize, 2 * clearSize, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-    });
-  }
-  
   /**
    * Draw bouncing PONG title
    */
   drawBouncingPongTitle() {
-    // Clear previous position
-    this.clearPongTitleArea();
-    
     // Update position
     this.pongTitleX += this.pongTitleVx;
     this.pongTitleY += this.pongTitleVy;
@@ -818,25 +687,6 @@ class Pong {
       const pattern = LARGE_LETTER_PATTERNS[letters[i]];
       if (pattern) this.display.drawPattern(pattern, startX + i * charWidth * scale, startY, scale);
     }
-    
-    // Store current position for next frame cleanup
-    this.prevPongTitleX = Math.floor(this.pongTitleX);
-    this.prevPongTitleY = Math.floor(this.pongTitleY);
-  }
-  
-  clearPlayer2FrameArea() {
-    const midX = Math.floor(this.width / 2);
-    const buttonSize = 20;
-    const padding = 5;
-    const triangleOffset = 3;
-    const triangleHeight = 6;
-    const clearTop = this.player2FrameY - padding - triangleOffset - triangleHeight;
-    const clearBottom = this.player2FrameY + buttonSize + padding + triangleOffset + triangleHeight;
-    const clearLeft = this.player2FrameX - padding - 6;
-    const clearRight = this.player2FrameX + buttonSize + padding + 6;
-    this.display.clearRect(clearLeft, clearTop, clearRight - clearLeft, clearBottom - clearTop, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-    });
   }
   
   /**
@@ -902,10 +752,6 @@ class Pong {
   drawPlayer2Frame() {
     const midX = Math.floor(this.width / 2);
     const buttonSize = 20;
-    
-    // Clear area before drawing (including triangles outside)
-    this.clearPlayer2FrameArea();
-    
     const buttonX = this.player2FrameX;
     const buttonY = this.player2FrameY;
 
@@ -1054,86 +900,13 @@ class Pong {
   }
   
   /**
-   * Clear previous game over message area
-   */
-  clearPreviousGameOverMessage() {
-    // Skip if positions haven't been initialized yet or game over hasn't started
-    if (this.gameOverStartTime === 0) {
-      return;
-    }
-    
-    // Skip if positions are uninitialized (both are 0 and not yet set)
-    if (typeof this.prevGameOverStartX !== 'number' || typeof this.prevGameOverStartY !== 'number' ||
-        (this.prevGameOverStartX === 0 && this.prevGameOverStartY === 0 && this.gameOverStartTime > 0)) {
-      // Check if this is the very first frame (allow first draw without clearing)
-      const currentTime = performance.now();
-      const elapsed = currentTime - this.gameOverStartTime;
-      if (elapsed < 33) { // Skip first frame to allow initial draw
-        return;
-      }
-    }
-    
-    const centerX = Math.floor(this.width / 2);
-    const centerY = Math.floor(this.height / 2);
-    const textScale = 1.26; // 10% smaller: 1.4 * 0.9 = 1.26
-    // Calculate actual message width based on scaled character width
-    // Each character is 7 pixels wide (large letter pattern) * scale, plus spacing
-    const charWidth = 7 * textScale; // Scaled character width
-    const charSpacing = 2 * textScale; // Scaled spacing
-    const maxMessageLength = 7; // "WINNER!" or "YOU LOSE"
-    const messageWidth = Math.ceil((charWidth + charSpacing) * maxMessageLength - charSpacing); // Total width
-    const messageHeight = Math.ceil(9 * textScale); // Height of scaled text
-    const bounceAmount = 3;
-    
-    // Clear area large enough to cover full bounce range (previous position + bounce amount)
-    // Ensure we clamp coordinates to valid bounds to prevent clearing issues, especially on left edge
-    const clearWidth = Math.ceil(messageWidth) + 20; // Extra padding to ensure complete clearing
-    const clearHeight = messageHeight + (bounceAmount * 2) + 10; // Extra padding
-    const clearXStart = Math.max(0, Math.floor(this.prevGameOverStartX - 10)); // Extra left padding
-    const clearYStart = Math.max(0, Math.floor(this.prevGameOverStartY - bounceAmount - 5));
-    const clearXEnd = Math.min(this.width, clearXStart + clearWidth);
-    const clearYEnd = Math.min(this.height, clearYStart + clearHeight);
-    const midX = Math.floor(this.width / 2);
-    const buttonPadding = 30;
-    
-    // Only clear if we have valid coordinates
-    if (clearXStart < clearXEnd && clearYStart < clearYEnd) {
-      for (let py = clearYStart; py < clearYEnd; py++) {
-        for (let px = clearXStart; px < clearXEnd; px++) {
-          // Double-check bounds (defense in depth)
-          if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-            // Don't clear button areas (right side for restart button)
-            const isInButtonArea = px > this.width - buttonPadding && 
-                                 (py > centerY - 25 && py < centerY + 25);
-            // Don't clear court elements
-            if (px !== midX && py !== 0 && py !== this.height - 1 && !isInButtonArea) {
-              this.display.setPixel(px, py, false);
-            }
-          }
-        }
-      }
-    }
-    
-    // Redraw middle line if it was cleared (only if we have valid clear coordinates)
-    if (clearYStart < centerY + 10 && clearYEnd > centerY - 10) {
-      for (let py = Math.max(clearYStart, centerY - 10); py < Math.min(clearYEnd, centerY + 10); py++) {
-        if (py >= 0 && py < this.height && py % 2 === 0) {
-          this.display.setPixel(midX, py, true);
-        } else if (py >= 0 && py < this.height && py % 2 === 1) {
-          this.display.setPixel(midX, py, false);
-        }
-      }
-    }
-  }
-  
-  /**
    * Draw large pixel text for WINNER or YOU LOSE (simple bouncing text)
    */
   drawGameOverMessage() {
     const currentTime = performance.now();
     const elapsed = currentTime - this.gameOverStartTime;
     
-    const isWinner = this.winner === 'left';
+    const isWinner = this.winner === 'left' || this.winning === true;
     const message = isWinner ? 'WINNER!' : 'YOU LOSE';
     
     const centerX = Math.floor(this.width / 2);
@@ -1148,11 +921,8 @@ class Pong {
     // Button is at centerY ± 10 (20px tall), text is ~13px tall, so position higher
     const baseY = centerY - 28; // Moved higher to avoid restart button
     const startY = baseY + bounceY;
-    const startX = centerX - Math.floor(messageWidth / 2);
-    
-    // Clear previous message position before drawing new one
-    this.clearPreviousGameOverMessage();
-    
+    const startX = centerX - Math.floor(messageWidth / 2) + (isWinner ? 1 : 3); // WINNER! +1px right, YOU LOSE +3px right
+
     const letterPatterns = LARGE_LETTER_PATTERNS;
     
     // Draw main message text with bouncing
@@ -1194,10 +964,6 @@ class Pong {
       }
       charIndex++;
     }
-    
-    // Store current position for next frame cleanup
-    this.prevGameOverStartX = startX;
-    this.prevGameOverStartY = startY;
   }
   
   /**
@@ -1209,18 +975,6 @@ class Pong {
     
     // Draw restart arrow
     this.drawRestartArrow();
-  }
-  
-  clearGameOverArea() {
-    const centerX = Math.floor(this.width / 2);
-    const centerY = Math.floor(this.height / 2);
-    const clearWidth = 70;
-    const clearHeight = 20;
-    const buttonPadding = 30;
-    const midX = Math.floor(this.width / 2);
-    this.display.clearRect(centerX - clearWidth, centerY - clearHeight, 2 * clearWidth, 2 * clearHeight, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1 || (px > this.width - buttonPadding && py > centerY - 25 && py < centerY + 25)
-    });
   }
   
   /**
@@ -1240,12 +994,6 @@ class Pong {
           pixelX < this.restartButtonBounds.x + this.restartButtonBounds.width &&
           pixelY >= this.restartButtonBounds.y && 
           pixelY < this.restartButtonBounds.y + this.restartButtonBounds.height) {
-        // Go back to menu when restarting - ensure complete cleanup
-        this.clearGameOverArea();
-        this.clearCountdownArea();
-        this.clearPreviousGameOverMessage();
-        // Clear paddles and ball from final position
-        this.clearPreviousFrame();
         this.goToMenu();
         return true;
       }
@@ -1254,30 +1002,14 @@ class Pong {
   }
   
   /**
-   * Clear menu elements (PONG title and all frames)
-   */
-  clearMenuArea() {
-    this.clearPongTitleArea();
-    this.clearPlayer1FrameArea();
-    this.clearStartArrowArea();
-    this.clearPlayer2FrameArea();
-  }
-  
-  /**
    * Go to menu screen
    */
   goToMenu() {
-    // Clear all animation areas
-    this.clearGameOverArea();
-    this.clearCountdownArea();
-    this.clearPauseArea();
-    
     // Reset game state
     this.gameState = 'MENU';
     this.winner = null;
+    this.winning = false;
     this.gameOverStartTime = 0;
-    this.prevGameOverStartX = 0;
-    this.prevGameOverStartY = 0;
     
     // Reset PONG title position and velocity
     this.pongTitleX = Math.floor(this.width / 2);
@@ -1321,12 +1053,6 @@ class Pong {
    * Start a new game
    */
   startNewGame() {
-    // Clear all animation areas
-    this.clearGameOverArea();
-    this.clearCountdownArea();
-    this.clearMenuArea();
-    this.clearPauseArea();
-    
     // Reset scores
     this.score.left = 0;
     this.score.right = 0;
@@ -1357,6 +1083,7 @@ class Pong {
     this.countdownStartTime = performance.now();
     this.countdownScale = 2.0;
     this.winner = null;
+    this.winning = false;
     this.gameOverStartTime = 0;
   }
   
@@ -1371,43 +1098,16 @@ class Pong {
    * Check if game should end
    */
   checkGameEnd() {
-    const centerX = Math.floor(this.width / 2);
-    const centerY = Math.floor(this.height / 2);
-    const messageWidth = 70; // Approximate width
-    
     if (this.score.left >= 5) {
-      // Clear screen before transitioning to win/lose screen
-      this.clearPreviousFrame();
-      this.clearCountdownArea();
-      this.clearPauseArea();
-      this.clearGameOverArea();
-      
       this.winner = 'left';
       this.gameState = 'GAME_OVER';
       this.gameOverStartTime = performance.now();
-      // Initialize previous position for cleanup
-      this.prevGameOverStartX = centerX - Math.floor(messageWidth / 2);
-      this.prevGameOverStartY = centerY - 28; // Initial Y position
-      // Stop ball
       this.ball.vx = 0;
       this.ball.vy = 0;
     } else if (this.score.right >= 5) {
-      // Clear screen before transitioning to win/lose screen
-      this.clearPreviousFrame();
-      this.clearCountdownArea();
-      this.clearPauseArea();
-      this.clearGameOverArea();
-      
       this.winner = 'right';
       this.gameState = 'GAME_OVER';
       this.gameOverStartTime = performance.now();
-      // Initialize previous position for cleanup
-      const centerX = Math.floor(this.width / 2);
-      const centerY = Math.floor(this.height / 2);
-      const messageWidth = 70; // Approximate width
-      this.prevGameOverStartX = centerX - Math.floor(messageWidth / 2);
-      this.prevGameOverStartY = centerY - 28; // Initial Y position
-      // Stop ball
       this.ball.vx = 0;
       this.ball.vy = 0;
     }
@@ -1460,23 +1160,10 @@ class Pong {
     this.pauseButtonScaleDirection = 1;
   }
   
-  clearPauseArea() {
-    const centerX = Math.floor(this.width / 2);
-    const centerY = Math.floor(this.height / 2);
-    const clearSize = 20;
-    const midX = Math.floor(this.width / 2);
-    this.display.clearRect(centerX - clearSize, centerY - clearSize, 2 * clearSize, 2 * clearSize, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-    });
-  }
-  
   /**
    * Unpause the game - start countdown and restore state
    */
   unpauseGame() {
-    // Clear pause button area
-    this.clearPauseArea();
-    
     // Restore saved state
     if (this.savedState) {
       this.ball.x = this.savedState.ball.x;
@@ -1516,9 +1203,6 @@ class Pong {
     const barWidth = 3;
     const barHeight = 12;
     const barSpacing = 2;
-    
-    // Clear pause area completely before drawing
-    this.clearPauseArea();
     
     // Draw two vertical bars (pause icon)
     const scaledBarWidth = Math.floor(barWidth * this.pauseButtonScale);
@@ -1590,12 +1274,6 @@ class Pong {
         if (this.gameState === 'MENU') {
           this.startNewGame();
         } else if (this.gameState === 'GAME_OVER') {
-          // Go back to menu when restarting - ensure complete cleanup
-          this.clearGameOverArea();
-          this.clearCountdownArea();
-          this.clearPreviousGameOverMessage();
-          // Clear paddles and ball from final position
-          this.clearPreviousFrame();
           this.goToMenu();
         }
       } else if (this.gameState === 'MENU' && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S')) {
@@ -1615,61 +1293,18 @@ class Pong {
       } else if ((e.key === 'o' || e.key === 'O') && this.gameState === 'MENU') {
         // Debug: show win screen
         e.preventDefault();
-        // Clear screen before transitioning to win screen
-        this.clearMenuArea();
-        this.clearPreviousFrame();
-        this.clearCountdownArea();
-        this.clearPauseArea();
-        this.clearGameOverArea();
-        
-        const centerX = Math.floor(this.width / 2);
-        const centerY = Math.floor(this.height / 2);
-        const messageWidth = 70; // Approximate width
         this.gameState = 'GAME_OVER';
-        this.winner = 'left';
+        this.winning = true;
         this.gameOverStartTime = performance.now();
-        // Initialize previous position for cleanup
-        this.prevGameOverStartX = centerX - Math.floor(messageWidth / 2);
-        this.prevGameOverStartY = centerY - 28; // Initial Y position
       } else if ((e.key === 'l' || e.key === 'L') && this.gameState === 'MENU') {
         // Debug: show lose screen
         e.preventDefault();
-        // Clear screen before transitioning to lose screen
-        this.clearMenuArea();
-        this.clearPreviousFrame();
-        this.clearCountdownArea();
-        this.clearPauseArea();
-        this.clearGameOverArea();
-        
-        const centerX = Math.floor(this.width / 2);
-        const centerY = Math.floor(this.height / 2);
-        const messageWidth = 70; // Approximate width
         this.gameState = 'GAME_OVER';
-        this.winner = 'right';
+        this.winner = null;
+        this.winning = false;
         this.gameOverStartTime = performance.now();
-        // Initialize previous position for cleanup
-        this.prevGameOverStartX = centerX - Math.floor(messageWidth / 2);
-        this.prevGameOverStartY = centerY - 28; // Initial Y position
       }
     });
-  }
-  
-  /**
-   * Clear previous frame's dynamic elements
-   */
-  clearPreviousFrame() {
-    const midX = Math.floor(this.width / 2);
-    const preserve = (px, py) => px === midX || py === 0 || py === this.height - 1;
-    this.display.clearRect(this.PADDLE_LEFT_X, this.prevLeftPaddleY, this.PADDLE_WIDTH, this.PADDLE_HEIGHT, { preserve });
-    this.display.clearRect(this.PADDLE_RIGHT_X, this.prevRightPaddleY, this.PADDLE_WIDTH, this.PADDLE_HEIGHT, { preserve });
-    const ballX = Math.floor(this.prevBallX);
-    const ballY = Math.floor(this.prevBallY);
-    if (ballX >= 0 && ballX < this.width && ballY >= 0 && ballY < this.height) {
-      this.display.clearRect(ballX, ballY, 1, 1);
-      if (ballX === midX && ballY % 2 === 0) this.display.setPixel(midX, ballY, true);
-      else if (ballY === 0 || ballY === this.height - 1) this.display.setPixel(ballX, ballY, true);
-    }
-    this.updateScores();
   }
   
   /**
@@ -1862,8 +1497,6 @@ class Pong {
     this.maintainCourt();
     
     if (this.gameState === 'MENU') {
-      // Clear previous frame and redraw menu
-      this.clearPreviousFrame();
       this.drawMenu();
       return;
     } else if (this.gameState === 'COUNTDOWN') {
@@ -1887,7 +1520,7 @@ class Pong {
       // Message animates continuously until restart
       return;
     } else if (this.gameState === 'PLAYING') {
-      // Logic and draw are done by the main loop (updateLogic + clearPreviousFrame + drawCurrentFrame)
+      // Logic and draw are done by the main loop (updateLogic + drawCurrentFrame)
       return;
     }
   }
@@ -1920,12 +1553,22 @@ const MAX_UPDATES_PER_FRAME = 5;
 let lastTs = 0;
 let accumulator = 0;
 let lastRenderTime;
+let prevGameState = null;
 
 function gameLoop(ts) {
   if (!lastTs) lastTs = ts;
   let frameMs = Math.min(ts - lastTs, MAX_FRAME_MS);
   lastTs = ts;
   accumulator += frameMs;
+
+  // On transition into PLAYING (e.g. from COUNTDOWN), reset accumulator so we don't
+  // run a burst of logic updates that glitches paddles to edges and can corrupt score.
+  if (game.gameState === 'PLAYING' && prevGameState !== 'PLAYING') {
+    accumulator = 0;
+  }
+  prevGameState = game.gameState;
+
+  display.clear();
 
   let prevState = null;
   if (game.gameState === 'PLAYING') {
@@ -1946,7 +1589,6 @@ function gameLoop(ts) {
   const now = performance.now();
   const dtSinceLastRender = lastRenderTime != null ? now - lastRenderTime : 0;
   if (game.gameState === 'PLAYING') {
-    game.clearPreviousFrame();
     game.drawCurrentFrame(alpha, prevState);
   }
   display.render(alpha, { now, dtSinceLastRender });

@@ -192,24 +192,25 @@ export class PixelDisplay {
   }
 
   /**
-   * Draw a 2D pattern. pattern[py][px]: 1=on, 0=skip. Scale: each 1 becomes scale×scale pixels.
+   * Draw a 2D pattern. pattern[py][px]: 1=on, 0=skip. Scale: output size cols*scale × rows*scale.
+   * Supports fractional scale for smooth zoom (e.g. countdown).
    */
   drawPattern(pattern, x, y, scale = 1) {
-    const s = Math.max(1, Math.floor(scale));
+    const s = Math.max(1, scale);
     const rows = pattern.length;
-    for (let row = 0; row < rows; row++) {
-      const r = pattern[row];
+    if (rows === 0) return;
+    const cols = pattern[0]?.length ?? 0;
+    if (cols === 0) return;
+    const outW = Math.max(1, Math.ceil(cols * s));
+    const outH = Math.max(1, Math.ceil(rows * s));
+    for (let oy = 0; oy < outH; oy++) {
+      const srcRow = Math.min(rows - 1, Math.floor(oy / s));
+      const r = pattern[srcRow];
       if (!r || !Array.isArray(r)) continue;
-      const cols = r.length;
-      for (let col = 0; col < cols; col++) {
-        if (r[col] === 1 || r[col] === true) {
-          for (let sy = 0; sy < s; sy++) {
-            for (let sx = 0; sx < s; sx++) {
-              const px = Math.floor(x + col * s + sx);
-              const py = Math.floor(y + row * s + sy);
-              this.setPixel(px, py, true);
-            }
-          }
+      for (let ox = 0; ox < outW; ox++) {
+        const srcCol = Math.min(cols - 1, Math.floor(ox / s));
+        if (r[srcCol] === 1 || r[srcCol] === true) {
+          this.setPixel(Math.floor(x + ox), Math.floor(y + oy), true);
         }
       }
     }
@@ -305,14 +306,23 @@ export class PixelDisplay {
   }
 
   /**
-   * Clear all pixels (set all to OFF)
+   * Clear all pixels (set all to OFF).
+   * Pixels that were ON get offTimestamp=now so they fade out. Pixels already OFF get
+   * offTimestamp in the past so they render fully dark; using now would make them glow
+   * as if just turned off (offElapsed=0 → full fade-out brightness).
    */
   clear() {
     const now = this.getTime();
+    const alreadyFaded = now - this.fadeOutTime - 1;
     for (let y = 0; y < this.emulatedHeight; y++) {
       for (let x = 0; x < this.emulatedWidth; x++) {
-        this.pixels[y][x].state = false;
-        this.pixels[y][x].offTimestamp = now;
+        const p = this.pixels[y][x];
+        if (p.state) {
+          p.offTimestamp = now;
+        } else {
+          p.offTimestamp = alreadyFaded;
+        }
+        p.state = false;
       }
     }
   }
