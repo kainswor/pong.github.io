@@ -1,4 +1,4 @@
-.PHONY: build run run-debug stop restart logs clean rebuild help build-dev gh-pages deploy-gh-pages rebuild-all
+.PHONY: build run run-debug stop restart logs clean rebuild help build-dev gh-pages deploy-gh-pages rebuild-all test test-verbose
 
 # Docker image name
 IMAGE_NAME := pong
@@ -15,6 +15,12 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+test: ## Run the test suite
+	npm test -- --run
+
+test-verbose: ## Run the test suite with max verbosity (npm silly, vitest verbose, shell -x)
+	set -x; npm run test --loglevel silly -- --run --reporter=verbose
 
 build: ## Build the Docker image
 	@echo "Building Docker image..."

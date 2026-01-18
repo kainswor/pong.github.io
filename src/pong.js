@@ -536,22 +536,37 @@ class Pong {
   }
   
   /**
+   * Cached blink state so all blinking=true frames on screen are in sync. Uses 2P rates: speed 0.0025, on when cycle < 0.7. Recomputes once per ~16ms.
+   */
+  _getBlinkOn() {
+    const now = performance.now();
+    const BLINK_CACHE_MS = 16;
+    if (!this._blinkSnapshot || (now - this._blinkSnapshot.at) > BLINK_CACHE_MS) {
+      const blinkSpeed = 0.0025;
+      const cycle = (now * blinkSpeed) % 1.0;
+      this._blinkSnapshot = { at: now, on: cycle < 0.7 };
+    }
+    return this._blinkSnapshot.on;
+  }
+
+  /**
+   * Draw frame (1px outline). Clears frame area first. Court preserve. Square: size×size at (x, y).
+   * @param {boolean} [blinking=false] - If false, always draw. If true, draw only when blink is on (2P timing); all blinking frames stay in sync.
+   */
+  drawFrame(x, y, size, blinking = false) {
+    this.clearButtonFrame(x, y, size);
+    if (blinking && !this._getBlinkOn()) return;
+    const midX = Math.floor(this.width / 2);
+    this.display.drawRectOutline(x, y, size, size, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
+  }
+
+  /**
    * Draw blinking frame around button
    */
   drawButtonFrame(buttonX, buttonY, buttonSize) {
-    const currentTime = performance.now();
-    const blinkSpeed = 0.01;
-    const blink = Math.floor((currentTime * blinkSpeed) % 2);
-    
-    // Always clear frame area first
-    this.clearButtonFrame(buttonX, buttonY, buttonSize);
-    
-    if (blink === 0) {
-      const midX = Math.floor(this.width / 2);
-      this.display.drawRectOutline(buttonX, buttonY, buttonSize, buttonSize, {
-        preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-      });
-    }
+    this.drawFrame(buttonX, buttonY, buttonSize, true);
   }
   
   clearStartArrowArea() {
@@ -575,15 +590,12 @@ class Pong {
   }
   
   drawPlayer1Frame() {
-    const midX = Math.floor(this.width / 2);
     const buttonSize = 20;
     this.clearPlayer1FrameArea();
     const buttonX = this.player1FrameX;
     const buttonY = this.player1FrameY;
-    this.display.drawRectOutline(buttonX, buttonY, buttonSize, buttonSize, {
-      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-    });
-    const scale = 2; // was 1.5; drawPattern uses int
+    this.drawFrame(buttonX, buttonY, buttonSize, true);
+    const scale = 2;
     const edgeGap = 1;
     const textStartX = buttonX + edgeGap;
     const textStartY = buttonY + edgeGap + 2;
@@ -591,7 +603,7 @@ class Pong {
     this.display.drawPattern(PIXEL_FONT[1], textStartX, textStartY, scale);
     this.display.drawPattern(LARGE_LETTER_PATTERNS['P'], textStartX + digit1W + 1, textStartY, scale);
   }
-  
+
   /**
    * Draw VCR Play icon (triangle) for start button (20x20)
    */
@@ -896,22 +908,9 @@ class Pong {
     
     const buttonX = this.player2FrameX;
     const buttonY = this.player2FrameY;
-    
-    // Draw blinking frame with reduced blink rate (25% of original, on 70% of time)
-    const currentTime = performance.now();
-    const blinkSpeed = 0.0025; // 25% of original 0.01
-    const cycle = (currentTime * blinkSpeed) % 1.0;
-    const shouldBlink = cycle < 0.7; // On 70% of the time
-    
-    // Always clear frame area first
-    this.clearButtonFrame(buttonX, buttonY, buttonSize);
-    
-    if (shouldBlink) {
-      this.display.drawRectOutline(buttonX, buttonY, buttonSize, buttonSize, {
-        preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
-      });
-    }
-    
+
+    this.drawFrame(buttonX, buttonY, buttonSize, true);
+
     // Draw up/down arrow triangles OUTSIDE the frame (on the outside edges)
     // Triangles are now 2x larger (height 6), so adjust offset
     const centerX = buttonX + Math.floor(buttonSize / 2);
