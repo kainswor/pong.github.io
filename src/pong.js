@@ -1620,19 +1620,19 @@ class Pong {
   calculateAISkill() {
     let baseSkill;
     if (this.aiDifficultyLevel === 1) {
-      baseSkill = 0.25;
+      baseSkill = 0.2;
     } else if (this.aiDifficultyLevel === 2) {
       baseSkill = 0.5;
     } else { // Level 3
-      baseSkill = 0.75;
-      // For level 3, scale from 0.75 to 0.85 as speed increases
+      baseSkill = 0.8;
+      // For level 3, scale from 0.8 to 0.95 as speed increases
       const maxSpeedMultiplier = 2.0;
-      const maxIncrease = 0.1; // 0.85 - 0.75
+      const maxIncrease = 0.15; // 0.95 - 0.8
       const scaleFactor = maxIncrease / (maxSpeedMultiplier - 1.0);
       const speedIncrease = Math.min(this.currentSpeedMultiplier - 1.0, maxSpeedMultiplier - 1.0);
-      baseSkill = 0.75 + speedIncrease * scaleFactor;
-      // Cap at 0.85 maximum
-      baseSkill = Math.min(baseSkill, 0.85);
+      baseSkill = 0.8 + speedIncrease * scaleFactor;
+      // Cap at 0.95 maximum
+      baseSkill = Math.min(baseSkill, 0.95);
     }
     return baseSkill;
   }
