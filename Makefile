@@ -1,10 +1,14 @@
-.PHONY: build run run-debug stop restart logs clean rebuild help
+.PHONY: build run run-debug stop restart logs clean rebuild help build-dev gh-pages deploy-gh-pages rebuild-all
 
 # Docker image name
 IMAGE_NAME := pong
 CONTAINER_NAME := pong-container
 HOST_PORT := 8080
 CONTAINER_PORT := 80
+
+# Git remote for GitHub Pages
+GH_PAGES_REMOTE := upstream
+GH_PAGES_BRANCH := main
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -67,3 +71,47 @@ clean: ## Remove the Docker image
 	@echo "Clean complete!"
 
 rebuild: clean build ## Rebuild the Docker image from scratch
+
+# Development build targets
+build-dev: ## Build for development (Vite bundle to dist/)
+	@echo "Building development bundle..."
+	npm run build
+	@echo "Development build complete! Output: dist/"
+
+# GitHub Pages build targets
+gh-pages: ## Build inline HTML for GitHub Pages
+	@echo "Building GitHub Pages inline HTML..."
+	npm run build:gh-pages
+	@echo ""
+	@echo "✓ GitHub Pages build complete!"
+	@echo "  Output: index.html"
+	@echo ""
+	@git status --short index.html
+
+deploy-gh-pages: gh-pages ## Build inline HTML and push to GitHub Pages
+	@echo ""
+	@echo "Deploying to GitHub Pages..."
+	@echo ""
+	@git add index.html
+	@git diff --cached --stat index.html
+	@echo ""
+	@read -p "Commit and push to $(GH_PAGES_REMOTE)/$(GH_PAGES_BRANCH)? [y/N] " -n 1 -r; \
+	echo; \
+	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+		git commit -m "Update GitHub Pages inline HTML" || true; \
+		git push $(GH_PAGES_REMOTE) $(GH_PAGES_BRANCH); \
+		echo ""; \
+		echo "✓ Deployed to GitHub Pages!"; \
+		echo "  URL: https://kainswor.github.io/pong/"; \
+		echo "  (may take 1-5 minutes to appear)"; \
+	else \
+		echo "Deployment cancelled."; \
+		git reset HEAD index.html; \
+	fi
+
+rebuild-all: clean build-dev gh-pages ## Rebuild both Docker and GitHub Pages versions
+	@echo ""
+	@echo "✓ All builds complete!"
+	@echo "  Docker image: $(IMAGE_NAME)"
+	@echo "  Vite bundle: dist/"
+	@echo "  GitHub Pages: index.html"
