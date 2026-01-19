@@ -62,7 +62,9 @@ try {
 
   // Step 3: Combine JavaScript
   logStep(3, 'Combining JavaScript into single bundle...');
-  const combinedJs = `${pixelDisplayProcessed}\n\n${spritesProcessed}\n\n${pongProcessed}`;
+  const debugScreens = process.env.DISABLE_DEBUG !== '1' && process.env.DISABLE_DEBUG !== 'true';
+  const debugPreamble = `const __DEBUG_SCREENS_ENABLED__ = ${debugScreens};\n\n`;
+  const combinedJs = debugPreamble + `${pixelDisplayProcessed}\n\n${spritesProcessed}\n\n${pongProcessed}`;
 
   // Step 4: Generate HTML
   logStep(4, 'Generating HTML template...');

@@ -1,4 +1,4 @@
-.PHONY: build run run-debug stop restart logs clean rebuild help build-dev gh-pages deploy-gh-pages rebuild-all test test-verbose
+.PHONY: build run run-debug stop restart logs clean rebuild help build-dev gh-pages deploy-gh-pages rebuild-all build-debug test test-verbose
 
 # Docker image name
 IMAGE_NAME := pong
@@ -85,9 +85,9 @@ build-dev: ## Build for development (Vite bundle to dist/)
 	@echo "Development build complete! Output: dist/"
 
 # GitHub Pages build targets
-gh-pages: ## Build inline HTML for GitHub Pages
+gh-pages: ## Build inline HTML for GitHub Pages (debug screens disabled)
 	@echo "Building GitHub Pages inline HTML..."
-	npm run build:gh-pages
+	DISABLE_DEBUG=1 npm run build:gh-pages
 	@echo ""
 	@echo "✓ GitHub Pages build complete!"
 	@echo "  Output: index.html"
@@ -121,3 +121,14 @@ rebuild-all: clean build-dev gh-pages ## Rebuild both Docker and GitHub Pages ve
 	@echo "  Docker image: $(IMAGE_NAME)"
 	@echo "  Vite bundle: dist/"
 	@echo "  GitHub Pages: index.html"
+
+build-debug: ## Build all three (dist, gh-pages, docker) with debug screens enabled
+	@echo "Building with debug screens enabled..."
+	@echo "[1/3] Vite dist..."
+	npm run build
+	@echo "[2/3] GitHub Pages..."
+	npm run build:gh-pages
+	@echo "[3/3] Docker image..."
+	docker build --build-arg DISABLE_DEBUG=0 -t $(IMAGE_NAME) .
+	@echo ""
+	@echo "✓ build-debug complete: dist/, index.html, $(IMAGE_NAME)"

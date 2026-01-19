@@ -31,6 +31,8 @@
 <body>
   <canvas id="display"></canvas>
   <script>
+const __DEBUG_SCREENS_ENABLED__ = false;
+
 /**
  * PixelDisplay - A retro CRT-style pixel display renderer
  * 
@@ -605,6 +607,28 @@ const PIXEL_FONT = {
  * Used for game over messages (WINNER!, LOSER!, etc.)
  */
 const LARGE_LETTER_PATTERNS = {
+  '1': [
+    [0,0,1,1,1,0,0],
+    [0,1,1,1,1,0,0],
+    [0,0,0,1,0,0,0],
+    [0,0,0,1,0,0,0],
+    [0,0,0,1,0,0,0],
+    [0,0,0,1,0,0,0],
+    [0,0,0,1,0,0,0],
+    [0,0,0,1,0,0,0],
+    [0,1,1,1,1,1,0]
+  ],
+  '2': [
+    [0,1,1,1,1,1,0],
+    [1,0,0,0,0,0,1],
+    [0,0,0,0,0,0,1],
+    [0,0,0,0,0,1,0],
+    [0,0,0,0,1,0,0],
+    [0,0,0,1,0,0,0],
+    [0,0,1,0,0,0,0],
+    [0,1,0,0,0,0,0],
+    [1,1,1,1,1,1,1]
+  ],
   'W': [
     [1,0,0,0,0,0,1],
     [1,0,0,0,0,0,1],
@@ -761,27 +785,29 @@ class PlayerController {
 }
 
 /**
- * KeyboardController - Controls paddle with arrow keys
+ * KeyboardController - Controls paddle with configurable keys
+ * @param {Object} [options]
+ * @param {string[]} [options.upKeys=['ArrowUp','w','W']]
+ * @param {string[]} [options.downKeys=['ArrowDown','s','S']]
  */
 class KeyboardController extends PlayerController {
-  constructor() {
+  constructor(options = {}) {
     super();
-    this.keys = {
-      ArrowUp: false,
-      ArrowDown: false,
-      w: false,
-      W: false,
-      s: false,
-      S: false
-    };
-    
+    const upKeys = options.upKeys ?? ['ArrowUp', 'w', 'W'];
+    const downKeys = options.downKeys ?? ['ArrowDown', 's', 'S'];
+    this.keys = {};
+    for (const k of upKeys) this.keys[k] = false;
+    for (const k of downKeys) this.keys[k] = false;
+    this._upKeys = upKeys;
+    this._downKeys = downKeys;
+
     document.addEventListener('keydown', (e) => {
       if (this.keys.hasOwnProperty(e.key)) {
         e.preventDefault();
         this.keys[e.key] = true;
       }
     });
-    
+
     document.addEventListener('keyup', (e) => {
       if (this.keys.hasOwnProperty(e.key)) {
         e.preventDefault();
@@ -789,12 +815,10 @@ class KeyboardController extends PlayerController {
       }
     });
   }
-  
+
   update(paddle, ball, gameState) {
-    // Arrow keys or WASD for up
-    if (this.keys.ArrowUp || this.keys.w || this.keys.W) return 'up';
-    // Arrow keys or WASD for down
-    if (this.keys.ArrowDown || this.keys.s || this.keys.S) return 'down';
+    if (this._upKeys.some((k) => this.keys[k])) return 'up';
+    if (this._downKeys.some((k) => this.keys[k])) return 'down';
     return null;
   }
 }
@@ -969,6 +993,8 @@ class Pong {
     this.countdownScale = 1.0;
     this.winner = null; // 'left' or 'right'
     this.winning = false; // debug win shortcut (o key); also used by drawGameOverMessage
+    this.gameOverViaDebugKey = false; // O/L from menu; allows 1/2 to switch to 2P-style "1P"/"2P" view
+    this.debugGameOverVariant = null; // null | '1P' | '2P' when gameOverViaDebugKey
     this.gameOverStartTime = 0;
     this.restartArrowRotation = 0;
     this.restartArrowRotationSpeed = 0.1;
@@ -985,9 +1011,10 @@ class Pong {
     // Current speed multiplier for AI skill scaling
     this.currentSpeedMultiplier = 1.0;
     
-    // AI difficulty level (1, 2, or 3)
-    this.aiDifficultyLevel = 2; // Default: level 2 (normal skill 0.5)
-    
+    // Right-side selector: '2P' (human) or 1, 2, 3 (AI difficulty)
+    this.rightPlayerOption = 2;
+    this.aiDifficultyLevel = 2; // Kept in sync with rightPlayerOption when not 2P
+
     // Menu frame positions
     this.player1FrameX = 0;
     this.player1FrameY = 0;
@@ -1032,9 +1059,13 @@ class Pong {
       right: 0
     };
     
-    // Controllers
-    this.leftController = new KeyboardController();
-    this.rightController = new AIController(0.5); // Default skill: 0.5 (normal)
+    // Pre-created controllers; leftController/rightController set in startNewGame
+    this._keyboard1P = new KeyboardController({ upKeys: ['ArrowUp', 'w', 'W'], downKeys: ['ArrowDown', 's', 'S'] });
+    this._keyboardLeft2P = new KeyboardController({ upKeys: ['w', 'W'], downKeys: ['s', 'S'] });
+    this._keyboardRight2P = new KeyboardController({ upKeys: ['ArrowUp'], downKeys: ['ArrowDown'] });
+    this._aiController = new AIController(0.5);
+    this.leftController = this._keyboard1P;
+    this.rightController = this._aiController;
     
     // Track previous positions for clearing
     this.prevLeftPaddleY = this.leftPaddle.y;
@@ -1496,7 +1527,7 @@ class Pong {
   }
   
   /**
-   * Draw Player 2 frame with difficulty selector (blinking frame, up/down arrows, number)
+   * Draw Player 2 frame: 2P (human) or AI level 1/2/3. Cycle: 2P <-> 1 <-> 2 <-> 3.
    */
   drawPlayer2Frame() {
     const midX = Math.floor(this.width / 2);
@@ -1506,28 +1537,37 @@ class Pong {
 
     this.drawFrame(buttonX, buttonY, buttonSize, true);
 
-    // Draw up/down arrow triangles OUTSIDE the frame (on the outside edges)
-    // Triangles are now 2x larger (height 6), so adjust offset
     const centerX = buttonX + Math.floor(buttonSize / 2);
-    const triangleOffset = 3; // Distance outside frame (adjusted for larger triangles)
-    const upTriangleY = buttonY - triangleOffset - 3; // Above top edge (center of triangle)
-    const downTriangleY = buttonY + buttonSize + triangleOffset + 3; // Below bottom edge (center of triangle)
-    
-    // Reversed order: up arrow increases (1->2->3), down arrow decreases (3->2->1)
-    // Up triangle: solid if can increase (level < 3), outlined if can't (level === 3)
-    const upFilled = this.aiDifficultyLevel < 3;
+    const triangleOffset = 3;
+    const upTriangleY = buttonY - triangleOffset - 3;
+    const downTriangleY = buttonY + buttonSize + triangleOffset + 3;
+
+    // Cycle 2P, 1, 2, 3 (wrap). Triangles: solid when that move is possible, hollow at limits.
+    const order = ['2P', 1, 2, 3];
+    const i = Math.max(0, order.indexOf(this.rightPlayerOption));
+    const upFilled = i < 3;   // hollow at 3 (up would wrap to 2P; we treat 3 as top for "AI level")
+    const downFilled = i > 0; // hollow at 2P (down would wrap to 3; we treat 2P as bottom for "human")
     this.drawSmallTriangle(centerX, upTriangleY, 'up', upFilled, midX);
-    
-    // Down triangle: solid if can decrease (level > 1), outlined if can't (level === 1)
-    const downFilled = this.aiDifficultyLevel > 1;
     this.drawSmallTriangle(centerX, downTriangleY, 'down', downFilled, midX);
-    
-    const digit = this.aiDifficultyLevel;
-    const digitWidth = 5;
-    const scale = 2;
-    const digitX = buttonX + Math.floor((buttonSize - digitWidth * scale) / 2);
-    const digitY = buttonY + Math.floor((buttonSize - 7 * scale) / 2);
-    this.display.drawPattern(PIXEL_FONT[digit], digitX, digitY, scale);
+
+    if (this.rightPlayerOption === '2P') {
+      // Draw "2P": "2" 2px narrower than 1P digit; P matches 1P style
+      const scaleP = 17 / 12;
+      const edgeGap = 1;
+      const textStartX = buttonX + edgeGap - 1;
+      const textStartY = buttonY + edgeGap + 2;
+      const scale2 = 6 / 5; // 2px narrower: 5*17/12=8 -> 6
+      const digit2W = Math.ceil(5 * scale2);
+      this.display.drawPattern(PIXEL_FONT[2], textStartX, textStartY, scale2);
+      this.display.drawPattern(LARGE_LETTER_PATTERNS['P'], textStartX + digit2W + 1, textStartY, scaleP);
+    } else {
+      const digit = this.aiDifficultyLevel;
+      const digitWidth = 5;
+      const scale = 2;
+      const digitX = buttonX + Math.floor((buttonSize - digitWidth * scale) / 2);
+      const digitY = buttonY + Math.floor((buttonSize - 7 * scale) / 2);
+      this.display.drawPattern(PIXEL_FONT[digit], digitX, digitY, scale);
+    }
   }
   
   drawMenu() {
@@ -1654,53 +1694,47 @@ class Pong {
   drawGameOverMessage() {
     const currentTime = performance.now();
     const elapsed = currentTime - this.gameOverStartTime;
-    
-    const isWinner = this.winner === 'left' || this.winning === true;
-    const message = isWinner ? 'WINNER!' : 'YOU LOSE';
-    
     const centerX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
+    const is2P = this.rightPlayerOption === '2P';
+    const isWinner = this.winner === 'left' || this.winning === true;
+
+    // Top line: 2P or debug 2P-style always "WINNER!"; debug 1P-style or normal 1P uses winner/winning
+    let message;
+    if (this.gameOverViaDebugKey) {
+      message = this.debugGameOverVariant ? 'WINNER!' : (isWinner ? 'WINNER!' : 'YOU LOSE');
+    } else {
+      message = is2P ? 'WINNER!' : (isWinner ? 'WINNER!' : 'YOU LOSE');
+    }
+
     const charWidth = 10;
     const messageWidth = message.length * charWidth;
-    
-    // Bouncing animation for text (vertical bounce) - positioned higher to avoid button
     const bounceSpeed = 0.003;
     const bounceAmount = 3;
     const bounceY = Math.sin(elapsed * bounceSpeed) * bounceAmount;
-    // Button is at centerY ± 10 (20px tall), text is ~13px tall, so position higher
-    const baseY = centerY - 28; // Moved higher to avoid restart button
+    const baseY = centerY - 28;
     const startY = baseY + bounceY;
-    const startX = centerX - Math.floor(messageWidth / 2) + (isWinner ? 1 : 3); // WINNER! +1px right, YOU LOSE +3px right
+    const startX = centerX - Math.floor(messageWidth / 2) + (message === 'WINNER!' ? 1 : 3);
 
     const letterPatterns = LARGE_LETTER_PATTERNS;
-    
-    // Draw main message text with bouncing
     let charIndex = 0;
     for (const char of message) {
-      if (char === ' ') {
-        charIndex++;
-        continue;
-      }
-      
+      if (char === ' ') { charIndex++; continue; }
       const pattern = letterPatterns[char.toUpperCase()];
       if (pattern) {
         const charX = startX + (charIndex * charWidth);
-        const charY = startY;
-        const textScale = 1.26; // 10% smaller: 1.4 * 0.9 = 1.26
-        
+        const textScale = 1.26;
         for (let row = 0; row < 9; row++) {
           for (let col = 0; col < 7; col++) {
             if (pattern[row] && pattern[row][col] === 1) {
               for (let sy = 0; sy < textScale; sy++) {
                 for (let sx = 0; sx < textScale; sx++) {
                   const px = Math.floor(charX + col * textScale + sx);
-                  const py = Math.floor(charY + row * textScale + sy);
+                  const py = Math.floor(startY + row * textScale + sy);
                   if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
                     const midX = Math.floor(this.width / 2);
-                    // Keep button areas clear (right side for restart button)
                     const buttonPadding = 30;
-                    const isInButtonArea = px > this.width - buttonPadding && 
-                                         (py > centerY - 25 && py < centerY + 25);
+                    const isInButtonArea = px > this.width - buttonPadding && (py > centerY - 25 && py < centerY + 25);
                     if (px !== midX && py !== 0 && py !== this.height - 1 && !isInButtonArea) {
                       this.display.setPixel(px, py, true);
                     }
@@ -1712,6 +1746,48 @@ class Pong {
         }
       }
       charIndex++;
+    }
+
+    // 2P or debug 2P-style: draw "1P" or "2P" big and bouncing in the center of the lower half
+    const show2PLabel = (is2P && (this.winner === 'left' || this.winner === 'right')) ||
+      (this.gameOverViaDebugKey && (this.debugGameOverVariant === '1P' || this.debugGameOverVariant === '2P'));
+    if (show2PLabel) {
+      const label = this.debugGameOverVariant || (this.winner === 'left' ? '1P' : '2P');
+      const digit = label[0];
+      const lowerMidY = Math.floor(this.height / 2) + Math.floor((this.height / 2) / 2);
+      const labelBounceY = Math.sin(elapsed * 0.003) * 3;
+      const labelY = lowerMidY + labelBounceY;
+      const labelScale = 2.0;
+      const glyphW = Math.ceil(7 * labelScale); // 7 cols per symbol
+      const gapW = 4; // space between digit and P, centered on centerline when block is centered
+      const totalW = glyphW + gapW + glyphW;
+      let labelX = centerX - Math.floor(totalW / 2);
+
+      const drawGlyph = (pat, x) => {
+        if (!pat) return;
+        for (let r = 0; r < 9; r++) {
+          for (let c = 0; c < 7; c++) {
+            if (pat[r] && pat[r][c] === 1) {
+              for (let sy = 0; sy < labelScale; sy++) {
+                for (let sx = 0; sx < labelScale; sx++) {
+                  const px = Math.floor(x + c * labelScale + sx);
+                  const py = Math.floor(labelY + r * labelScale + sy);
+                  if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+                    const midX = Math.floor(this.width / 2);
+                    const pad = 30;
+                    const inBtn = px > this.width - pad && (py > centerY - 25 && py < centerY + 25);
+                    if (px !== midX && py !== 0 && py !== this.height - 1 && !inBtn) {
+                      this.display.setPixel(px, py, true);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+      drawGlyph(letterPatterns[digit], labelX);
+      drawGlyph(letterPatterns['P'], labelX + glyphW + gapW);
     }
   }
   
@@ -1758,6 +1834,8 @@ class Pong {
     this.gameState = 'MENU';
     this.winner = null;
     this.winning = false;
+    this.gameOverViaDebugKey = false;
+    this.debugGameOverVariant = null;
     this.gameOverStartTime = 0;
     
     // Reset PONG title position and velocity
@@ -1822,10 +1900,17 @@ class Pong {
     
     // Update scores display
     this.updateScores();
-    
-    // Update AI controller with selected difficulty
-    this.updateAIControllerSkill();
-    
+
+    // Apply controllers from rightPlayerOption (2P vs 1P)
+    if (this.rightPlayerOption === '2P') {
+      this.leftController = this._keyboardLeft2P;
+      this.rightController = this._keyboardRight2P;
+    } else {
+      this.leftController = this._keyboard1P;
+      this.rightController = this._aiController;
+      this.updateAIControllerSkill();
+    }
+
     // Start countdown
     this.gameState = 'COUNTDOWN';
     this.countdownNumber = 3;
@@ -1833,6 +1918,8 @@ class Pong {
     this.countdownScale = 2.0;
     this.winner = null;
     this.winning = false;
+    this.gameOverViaDebugKey = false;
+    this.debugGameOverVariant = null;
     this.gameOverStartTime = 0;
   }
   
@@ -2026,32 +2113,39 @@ class Pong {
           this.goToMenu();
         }
       } else if (this.gameState === 'MENU' && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S')) {
-        // Handle arrow keys or WASD in menu state to change difficulty
-        // Reversed order: up increases (1->2->3), down decreases (3->2->1)
-        // W or ArrowUp = up, S or ArrowDown = down
+        // Cycle right-side selector: 2P, 1, 2, 3 (no wrap: stop at 3 going up, at 2P going down)
         e.preventDefault();
         const isUp = e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W';
         const isDown = e.key === 'ArrowDown' || e.key === 's' || e.key === 'S';
-        if (isUp && this.aiDifficultyLevel < 3) {
-          this.aiDifficultyLevel++;
-        } else if (isDown && this.aiDifficultyLevel > 1) {
-          this.aiDifficultyLevel--;
-        }
-        // Update AI controller skill when difficulty changes
-        this.updateAIControllerSkill();
-      } else if ((e.key === 'o' || e.key === 'O') && this.gameState === 'MENU') {
-        // Debug: show win screen
+        const order = ['2P', 1, 2, 3];
+        let i = order.indexOf(this.rightPlayerOption);
+        if (i === -1) i = 1;
+        if (isUp && i < 3) i++;
+        else if (isDown && i > 0) i--;
+        this.rightPlayerOption = order[i];
+        this.aiDifficultyLevel = this.rightPlayerOption === '2P' ? 1 : this.rightPlayerOption;
+        if (this.rightPlayerOption !== '2P') this.updateAIControllerSkill();
+      } else if (__DEBUG_SCREENS_ENABLED__ && (e.key === 'o' || e.key === 'O') && this.gameState === 'MENU') {
+        // Debug: show win screen (1P-style); on screen, 1/2 switch to 2P-style "1P"/"2P" view
         e.preventDefault();
         this.gameState = 'GAME_OVER';
         this.winning = true;
+        this.gameOverViaDebugKey = true;
+        this.debugGameOverVariant = null;
         this.gameOverStartTime = performance.now();
-      } else if ((e.key === 'l' || e.key === 'L') && this.gameState === 'MENU') {
+      } else if (__DEBUG_SCREENS_ENABLED__ && (e.key === 'l' || e.key === 'L') && this.gameState === 'MENU') {
         // Debug: show lose screen
         e.preventDefault();
         this.gameState = 'GAME_OVER';
         this.winner = null;
         this.winning = false;
+        this.gameOverViaDebugKey = true;
+        this.debugGameOverVariant = null;
         this.gameOverStartTime = performance.now();
+      } else if (__DEBUG_SCREENS_ENABLED__ && this.gameState === 'GAME_OVER' && this.gameOverViaDebugKey && (e.key === '1' || e.key === '2')) {
+        // Debug win screen only: switch to "1P won" or "2P won" 2P-style view
+        e.preventDefault();
+        this.debugGameOverVariant = e.key === '1' ? '1P' : '2P';
       }
     });
   }

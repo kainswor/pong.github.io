@@ -14,7 +14,9 @@ RUN npm ci
 # Copy source files
 COPY . .
 
-# Build the application
+# Build the application: DISABLE_DEBUG=1 (default) disables debug; build-debug passes DISABLE_DEBUG=0
+ARG DISABLE_DEBUG=1
+ENV DISABLE_DEBUG=${DISABLE_DEBUG}
 RUN npm run build
 
 # Stage 2: Serve with nginx

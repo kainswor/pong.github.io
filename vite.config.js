@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite';
 
+const debugScreens = process.env.DISABLE_DEBUG !== '1' && process.env.DISABLE_DEBUG !== 'true';
+
 export default defineConfig({
+  define: {
+    __DEBUG_SCREENS_ENABLED__: debugScreens
+  },
   // Development server configuration
   server: {
     port: 5173,
