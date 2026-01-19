@@ -38,33 +38,29 @@ try {
 
   // Step 1: Read source files
   logStep(1, 'Reading source files...');
+  const constantsJs = readFileSync(join(rootDir, 'src/constants.js'), 'utf-8');
+  const inputJs = readFileSync(join(rootDir, 'src/input.js'), 'utf-8');
   const pixelDisplayJs = readFileSync(join(rootDir, 'src/pixel-display.js'), 'utf-8');
   const spritesJs = readFileSync(join(rootDir, 'src/sprites.js'), 'utf-8');
   const pongJs = readFileSync(join(rootDir, 'src/pong.js'), 'utf-8');
 
-  // Step 2: Process JavaScript (remove import/export statements)
+  // Step 2: Process JavaScript (remove import/export; strip imports including multiline)
   logStep(2, 'Processing JavaScript modules...');
-  
-  // Remove export statements from pixel-display.js
-  const pixelDisplayProcessed = pixelDisplayJs
-    .replace(/^export\s+/gm, '')
-    .trim();
+  const stripExport = (s) => s.replace(/^export\s+/gm, '').trim();
+  const stripImports = (s) => s.replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"]\s*;?\s*/g, '').trim();
+  const stripExportPong = (s) => s.replace(/export\s*\{\s*Pong\s*\}\s*;?\s*/g, '').trim();
 
-  // Remove export statements from sprites.js
-  const spritesProcessed = spritesJs
-    .replace(/^export\s+/gm, '')
-    .trim();
+  const constantsProcessed = stripExport(constantsJs);
+  const inputProcessed = stripExport(inputJs);
+  const pixelDisplayProcessed = stripImports(stripExport(pixelDisplayJs));
+  const spritesProcessed = stripExport(spritesJs);
+  const pongProcessed = stripExportPong(stripImports(pongJs));
 
-  // Remove import statements from pong.js
-  const pongProcessed = pongJs
-    .replace(/^import\s+.*?from\s+['"].*?['"];?\s*$/gm, '')
-    .trim();
-
-  // Step 3: Combine JavaScript
+  // Step 3: Combine JavaScript (constants and input first; pong and pixel-display depend on them)
   logStep(3, 'Combining JavaScript into single bundle...');
   const debugScreens = process.env.DISABLE_DEBUG !== '1' && process.env.DISABLE_DEBUG !== 'true';
   const debugPreamble = `const __DEBUG_SCREENS_ENABLED__ = ${debugScreens};\n\n`;
-  const combinedJs = debugPreamble + `${pixelDisplayProcessed}\n\n${spritesProcessed}\n\n${pongProcessed}`;
+  const combinedJs = debugPreamble + [constantsProcessed, inputProcessed, pixelDisplayProcessed, spritesProcessed, pongProcessed].join('\n\n');
 
   // Step 4: Generate HTML
   logStep(4, 'Generating HTML template...');
@@ -112,6 +108,8 @@ ${combinedJs}
 
   // Success summary
   const stats = {
+    constants: (constantsProcessed.length / 1024).toFixed(1),
+    input: (inputProcessed.length / 1024).toFixed(1),
     pixelDisplay: (pixelDisplayProcessed.length / 1024).toFixed(1),
     sprites: (spritesProcessed.length / 1024).toFixed(1),
     pong: (pongProcessed.length / 1024).toFixed(1),
@@ -120,6 +118,8 @@ ${combinedJs}
 
   log('\n✓ Build complete!', 'green');
   log(`\n  File sizes:`, 'dim');
+  log(`    constants.js:     ${stats.constants} KB`, 'dim');
+  log(`    input.js:         ${stats.input} KB`, 'dim');
   log(`    pixel-display.js: ${stats.pixelDisplay} KB`, 'dim');
   log(`    sprites.js:       ${stats.sprites} KB`, 'dim');
   log(`    pong.js:          ${stats.pong} KB`, 'dim');

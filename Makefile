@@ -1,7 +1,9 @@
 .PHONY: build run run-debug stop restart logs clean rebuild help build-dev gh-pages deploy-gh-pages rebuild-all build-debug test test-verbose
 
-# Docker image name
+# Docker image name and tag: use :local so run/restart use the locally built image only
 IMAGE_NAME := pong
+IMAGE_TAG  := local
+IMAGE      := $(IMAGE_NAME):$(IMAGE_TAG)
 CONTAINER_NAME := pong-container
 HOST_PORT := 8080
 CONTAINER_PORT := 80
@@ -22,29 +24,29 @@ test: ## Run the test suite
 test-verbose: ## Run the test suite with max verbosity (npm silly, vitest verbose, shell -x)
 	set -x; npm run test --loglevel silly -- --run --reporter=verbose
 
-build: ## Build the Docker image
+build: ## Build the Docker image (tags as pong:local)
 	@echo "Building Docker image..."
-	docker build -t $(IMAGE_NAME) .
+	docker build -t $(IMAGE) .
 	@echo "Build complete!"
 
-run: ## Run the container on localhost:8080
+run: ## Run the container on localhost:8080 (uses locally built image)
 	@echo "Starting container..."
 	docker run -d \
 		--name $(CONTAINER_NAME) \
 		-p $(HOST_PORT):$(CONTAINER_PORT) \
 		--rm \
-		$(IMAGE_NAME)
+		$(IMAGE)
 	@echo "Container running on http://localhost:$(HOST_PORT)"
 	@echo "Use 'make stop' to stop the container"
 
-run-debug: ## Run the container with verbose debug mode
+run-debug: ## Run the container with verbose debug mode (uses locally built image)
 	@echo "Starting container in debug mode..."
 	docker run -d \
 		--name $(CONTAINER_NAME) \
 		-p $(HOST_PORT):$(CONTAINER_PORT) \
 		--rm \
 		-e NGINX_DEBUG=1 \
-		$(IMAGE_NAME) \
+		$(IMAGE) \
 		sh -c "nginx -V && nginx -t -c /etc/nginx/nginx.conf && nginx -g 'daemon off; error_log /dev/stderr debug;'"
 	@echo "Container running in debug mode on http://localhost:$(HOST_PORT)"
 	@echo "Use 'make stop' to stop the container"
@@ -56,7 +58,7 @@ stop: ## Stop and remove the running container
 	-docker rm $(CONTAINER_NAME) 2>/dev/null || true
 	@echo "Container stopped"
 
-restart: ## Force kill any running instances and start the container
+restart: ## Force kill any running instances and start the container (uses locally built image)
 	@echo "Force killing any running instances..."
 	-docker kill $(CONTAINER_NAME) 2>/dev/null || true
 	-docker rm -f $(CONTAINER_NAME) 2>/dev/null || true
@@ -65,7 +67,7 @@ restart: ## Force kill any running instances and start the container
 		--name $(CONTAINER_NAME) \
 		-p $(HOST_PORT):$(CONTAINER_PORT) \
 		--rm \
-		$(IMAGE_NAME)
+		$(IMAGE)
 	@echo "Container restarted on http://localhost:$(HOST_PORT)"
 
 logs: ## View container logs
@@ -73,7 +75,7 @@ logs: ## View container logs
 
 clean: ## Remove the Docker image
 	@echo "Removing Docker image..."
-	-docker rmi $(IMAGE_NAME)
+	-docker rmi $(IMAGE)
 	@echo "Clean complete!"
 
 rebuild: clean build ## Rebuild the Docker image from scratch
@@ -115,10 +117,10 @@ deploy-gh-pages: gh-pages ## Build inline HTML and push to GitHub Pages
 		git reset HEAD index.html; \
 	fi
 
-rebuild-all: clean build-dev gh-pages ## Rebuild both Docker and GitHub Pages versions
+rebuild-all: clean build build-dev gh-pages ## Rebuild Docker, Vite, and GitHub Pages (Docker image recreated after clean)
 	@echo ""
 	@echo "✓ All builds complete!"
-	@echo "  Docker image: $(IMAGE_NAME)"
+	@echo "  Docker image: $(IMAGE)"
 	@echo "  Vite bundle: dist/"
 	@echo "  GitHub Pages: index.html"
 
@@ -129,6 +131,6 @@ build-debug: ## Build all three (dist, gh-pages, docker) with debug screens enab
 	@echo "[2/3] GitHub Pages..."
 	npm run build:gh-pages
 	@echo "[3/3] Docker image..."
-	docker build --build-arg DISABLE_DEBUG=0 -t $(IMAGE_NAME) .
+	docker build --build-arg DISABLE_DEBUG=0 -t $(IMAGE) .
 	@echo ""
-	@echo "✓ build-debug complete: dist/, index.html, $(IMAGE_NAME)"
+	@echo "✓ build-debug complete: dist/, index.html, $(IMAGE)"

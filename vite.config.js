@@ -2,10 +2,25 @@ import { defineConfig } from 'vite';
 
 const debugScreens = process.env.DISABLE_DEBUG !== '1' && process.env.DISABLE_DEBUG !== 'true';
 
+/** Trigger full reload when index.html changes (e.g. after build-gh-pages overwrites it). */
+function fullReloadOnIndexHtml() {
+  return {
+    name: 'full-reload-on-index-html',
+    configureServer(server) {
+      server.watcher.on('change', (path) => {
+        if (path.endsWith('index.html')) {
+          server.ws.send({ type: 'full-reload', path: '*' });
+        }
+      });
+    }
+  };
+}
+
 export default defineConfig({
   define: {
     __DEBUG_SCREENS_ENABLED__: debugScreens
   },
+  plugins: [fullReloadOnIndexHtml()],
   // Development server configuration
   server: {
     port: 5173,

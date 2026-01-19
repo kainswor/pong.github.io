@@ -1,3 +1,9 @@
+import {
+  CRT_ON_COLOR, CRT_FADE_IN_MS, CRT_FADE_OUT_MS,
+  DEGAUSS_COOLDOWN_MS, DEGAUSS_COOLDOWN_MIN_MS, DEGAUSS_DURATION_BASE_MS,
+  DEGAUSS_AMP_PX, DEGAUSS_OVERLAY_ALPHA, DEGAUSS_DECAY_ALPHA, DEGAUSS_FREQ_HZ, DEGAUSS_WAVE_K
+} from './constants.js';
+
 /**
  * PixelDisplay - A retro CRT-style pixel display renderer
  * 
@@ -28,12 +34,11 @@ export class PixelDisplay {
     this.pixelHeight = (displayHeight - (emulatedHeight - 1) * this.gapHeight) / emulatedHeight;
     
     // CRT color (retro green)
-    this.onColor = '#39ff14';
-    this.offColor = '#000000';
+    this.onColor = CRT_ON_COLOR;
     
     // Fade timing (in milliseconds)
-    this.fadeInTime = 50;  // 0.05s
-    this.fadeOutTime = 200; // 0.2s
+    this.fadeInTime = CRT_FADE_IN_MS;
+    this.fadeOutTime = CRT_FADE_OUT_MS;
     
     // Pixel state: 2D array storing { state: boolean, onTimestamp: number, offTimestamp: number }
     this.pixels = [];
@@ -57,15 +62,15 @@ export class PixelDisplay {
     this.degaussDuration = 0;      // ms for current run
     this.degaussStrength = 0;      // 0..1 for current run
 
-    // Full-strength tuning
-    this.DEGAUSS_COOLDOWN_MS = 30000;
-    this.DEGAUSS_COOLDOWN_MIN_MS = 1000;   // below this: no visible
-    this.DEGAUSS_DURATION_BASE_MS = 2000;
-    this.DEGAUSS_AMP_PX = 12;
-    this.DEGAUSS_OVERLAY_ALPHA = 0.35;
-    this.DEGAUSS_DECAY_ALPHA = 2.5;
-    this.DEGAUSS_FREQ_HZ = 50;
-    this.DEGAUSS_WAVE_K = 2.5;
+    // Full-strength tuning (from constants)
+    this.DEGAUSS_COOLDOWN_MS = DEGAUSS_COOLDOWN_MS;
+    this.DEGAUSS_COOLDOWN_MIN_MS = DEGAUSS_COOLDOWN_MIN_MS;
+    this.DEGAUSS_DURATION_BASE_MS = DEGAUSS_DURATION_BASE_MS;
+    this.DEGAUSS_AMP_PX = DEGAUSS_AMP_PX;
+    this.DEGAUSS_OVERLAY_ALPHA = DEGAUSS_OVERLAY_ALPHA;
+    this.DEGAUSS_DECAY_ALPHA = DEGAUSS_DECAY_ALPHA;
+    this.DEGAUSS_FREQ_HZ = DEGAUSS_FREQ_HZ;
+    this.DEGAUSS_WAVE_K = DEGAUSS_WAVE_K;
   }
   
   /**
@@ -404,6 +409,10 @@ export class PixelDisplay {
       A = this.DEGAUSS_AMP_PX * this.degaussStrength;
     }
 
+    const onR = parseInt(this.onColor.substring(1, 3), 16);
+    const onG = parseInt(this.onColor.substring(3, 5), 16);
+    const onB = parseInt(this.onColor.substring(5, 7), 16);
+
     // Clear canvas with black background
     this.ctx.fillStyle = '#000000';
     this.ctx.fillRect(0, 0, this.displayWidth, this.displayHeight);
@@ -417,10 +426,7 @@ export class PixelDisplay {
           if (brightness > 0) {
             const pixelX = x * (this.pixelWidth + this.gapWidth);
             const pixelY = y * (this.pixelHeight + this.gapHeight);
-            const r = parseInt(this.onColor.substring(1, 3), 16);
-            const g = parseInt(this.onColor.substring(3, 5), 16);
-            const b = parseInt(this.onColor.substring(5, 7), 16);
-            this.ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${brightness})`;
+            this.ctx.fillStyle = `rgba(${onR}, ${onG}, ${onB}, ${brightness})`;
             this.ctx.fillRect(pixelX, pixelY, this.pixelWidth, this.pixelHeight);
           }
         }
@@ -446,10 +452,7 @@ export class PixelDisplay {
           const pixel = this.pixels[iy][ix];
           const brightness = this.calculateBrightness(pixel, currentTime);
           if (brightness > 0) {
-            const rC = parseInt(this.onColor.substring(1, 3), 16);
-            const g = parseInt(this.onColor.substring(3, 5), 16);
-            const b = parseInt(this.onColor.substring(5, 7), 16);
-            this.ctx.fillStyle = `rgba(${rC}, ${g}, ${b}, ${brightness})`;
+            this.ctx.fillStyle = `rgba(${onR}, ${onG}, ${onB}, ${brightness})`;
             this.ctx.fillRect(pixelX, pixelY, this.pixelWidth, this.pixelHeight);
           }
         }

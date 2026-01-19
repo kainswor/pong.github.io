@@ -4,13 +4,15 @@
   "description": "A retro CRT-style pixel display library for games",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run build:gh-pages && concurrently -n vite,build,test \"vite\" \"nodemon --watch src -e js --delay 200 -x 'npm run build:gh-pages'\" \"vitest --watch\"",
     "build": "vite build",
     "build:gh-pages": "node scripts/build-gh-pages.js",
     "preview": "vite preview",
     "test": "vitest"
   },
   "devDependencies": {
+    "concurrently": "^9.1.0",
+    "nodemon": "^3.1.9",
     "vite": "^6.4.1",
     "vitest": "^2.1.0"
   },
