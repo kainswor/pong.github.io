@@ -18,8 +18,8 @@ help: ## Show this help message
 	@echo 'Targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-test: ## Run the test suite
-	npm test -- --run
+test: ## Run the test suite with coverage (must meet or exceed baseline)
+	npm run test:coverage
 
 test-verbose: ## Run the test suite with max verbosity (npm silly, vitest verbose, shell -x)
 	set -x; npm run test --loglevel silly -- --run --reporter=verbose

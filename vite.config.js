@@ -27,6 +27,29 @@ export default defineConfig({
     open: true
   },
   
+  // Vitest and coverage
+  test: {
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.js'],
+      exclude: [
+        'node_modules',
+        'tests',
+        '**/*.test.js',
+        '**/pixel-display-test-utils.js',
+        'scripts'
+      ],
+      reportsDirectory: './coverage',
+      reporter: ['text', 'text-summary', 'html'],
+      thresholds: {
+        lines: 50,
+        functions: 30,
+        branches: 66,
+        statements: 50
+      }
+    }
+  },
+
   // Production build configuration
   build: {
     outDir: 'dist',

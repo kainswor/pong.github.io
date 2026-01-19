@@ -8,9 +8,11 @@
     "build": "vite build",
     "build:gh-pages": "node scripts/build-gh-pages.js",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.0",
     "concurrently": "^9.1.0",
     "nodemon": "^3.1.9",
     "vite": "^6.4.1",

@@ -1250,7 +1250,7 @@ class Pong {
    * Draw countdown with zoom bounce animation
    */
   drawCountdown() {
-    const currentTime = performance.now();
+    const currentTime = (this.display.getTime && this.display.getTime()) || performance.now();
     const elapsed = currentTime - this.countdownStartTime;
     const countdownDuration = 750; // 750ms per number
     
@@ -1737,6 +1737,27 @@ class Pong {
   }
   
   /**
+   * Returns 'WINNER!' or 'YOU LOSE' from game-over state (for drawGameOverMessage).
+   */
+  _getGameOverMessage() {
+    const is2P = this.rightPlayerOption === '2P';
+    const isWinner = this.winner === 'left' || this.winning === true;
+    if (this.gameOverViaDebugKey) {
+      return this.debugGameOverVariant ? 'WINNER!' : (isWinner ? 'WINNER!' : 'YOU LOSE');
+    }
+    return is2P ? 'WINNER!' : (isWinner ? 'WINNER!' : 'YOU LOSE');
+  }
+
+  /**
+   * Returns whether to draw the "1P"/"2P" bouncing label in game-over (for drawGameOverMessage).
+   */
+  _shouldShow2PLabel() {
+    const is2P = this.rightPlayerOption === '2P';
+    return (is2P && (this.winner === 'left' || this.winner === 'right')) ||
+      (this.gameOverViaDebugKey && (this.debugGameOverVariant === '1P' || this.debugGameOverVariant === '2P'));
+  }
+
+  /**
    * Draw large pixel text for WINNER or YOU LOSE (simple bouncing text)
    */
   drawGameOverMessage() {
@@ -1744,16 +1765,7 @@ class Pong {
     const elapsed = currentTime - this.gameOverStartTime;
     const centerX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
-    const is2P = this.rightPlayerOption === '2P';
-    const isWinner = this.winner === 'left' || this.winning === true;
-
-    // Top line: 2P or debug 2P-style always "WINNER!"; debug 1P-style or normal 1P uses winner/winning
-    let message;
-    if (this.gameOverViaDebugKey) {
-      message = this.debugGameOverVariant ? 'WINNER!' : (isWinner ? 'WINNER!' : 'YOU LOSE');
-    } else {
-      message = is2P ? 'WINNER!' : (isWinner ? 'WINNER!' : 'YOU LOSE');
-    }
+    const message = this._getGameOverMessage();
 
     const charWidth = GAME_OVER_CHAR_WIDTH;
     const messageWidth = message.length * charWidth;
@@ -1790,9 +1802,7 @@ class Pong {
     }
 
     // 2P or debug 2P-style: draw "1P" or "2P" big and bouncing in the center of the lower half
-    const show2PLabel = (is2P && (this.winner === 'left' || this.winner === 'right')) ||
-      (this.gameOverViaDebugKey && (this.debugGameOverVariant === '1P' || this.debugGameOverVariant === '2P'));
-    if (show2PLabel) {
+    if (this._shouldShow2PLabel()) {
       const label = this.debugGameOverVariant || (this.winner === 'left' ? '1P' : '2P');
       const digit = label[0];
       const lowerMidY = Math.floor(this.height / 2) + Math.floor((this.height / 2) / 2);
